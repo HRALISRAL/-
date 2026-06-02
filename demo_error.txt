@@ -1,0 +1,5 @@
+page.fill: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('input[placeholder="סך הכל שווי התחייבויות חודשיות בש״ח"]')[22m
+
+    at C:\Users\USER\.gemini\antigravity\scratch\event-flow\demo_automation.js:207:16
