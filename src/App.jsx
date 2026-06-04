@@ -33,7 +33,7 @@ function AppContent() {
         {/* App Header */}
         <header className="app-header">
           <div className="logo-section">
-            <h1>✨ EventFlow</h1>
+            <h1>✨ ניהול ארועים</h1>
             <p>מערכת חכמה לשיבוץ רבנים וניהול אירועים</p>
           </div>
 

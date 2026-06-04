@@ -1,5 +1,5 @@
-/* Prestigious Traditional & Institutional Design System for EventFlow */
-@import url('https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500;700&family=Rubik:wght@300;400;500;600;700&display=swap');
+/* Prestigious Modern Design System for EventFlow */
+@import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700;800&family=Heebo:wght@300;400;500;600;700;800&display=swap');
 
 :root {
   /* Warm, Respectful Off-White Background */
@@ -41,9 +41,9 @@
   --text-muted: #64748B;
   --text-dark: #0F172A;
   
-  /* Traditional Serif and Clean Sans-Serif Typography */
-  --font-title: 'Frank Ruhl Libre', 'Georgia', serif;
-  --font-main: 'Rubik', 'Segoe UI', sans-serif;
+  /* Clean Modern Hebrew Typography */
+  --font-title: 'Heebo', sans-serif;
+  --font-main: 'Assistant', 'Segoe UI', sans-serif;
   
   /* Crisp, Structured Borders & Transitions */
   --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);

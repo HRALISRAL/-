@@ -50,6 +50,7 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
   const upcomingEvents = myEvents.filter(e => e.status === 'approved');
   const completedEvents = myEvents.filter(e => e.status === 'completed');
   const reportedEvents = myEvents.filter(e => e.status === 'reported');
+  const canceledPendingEvents = myEvents.filter(e => e.status === 'canceled_pending');
 
   // Calendar parameters
   const year = calDate.getFullYear();
@@ -70,11 +71,11 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
   const firstDayIndex = new Date(year, month, 1).getDay();
 
   const handlePrevMonth = () => {
-    setCalDate(new Date(year, month - 1, 1));
+    setCalDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   };
 
   const handleNextMonth = () => {
-    setCalDate(new Date(year, month + 1, 1));
+    setCalDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
   const handleDayClick = (dayNum) => {
@@ -133,6 +134,8 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
       case 'declined': return 'נדחה';
       case 'completed': return 'הסתיים (ממתין לדוח)';
       case 'reported': return 'דוח מולא';
+      case 'canceled_pending': return 'בוטל (ממתין לאישור קבלה)';
+      case 'canceled': return 'בוטל ואושר';
       default: return status;
     }
   };
@@ -166,6 +169,8 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
               if (evt.status === 'declined') badgeClass = 'status-declined';
               if (evt.status === 'completed') badgeClass = 'status-completed';
               if (evt.status === 'reported') badgeClass = 'status-reported';
+              if (evt.status === 'canceled_pending') badgeClass = 'status-declined';
+              if (evt.status === 'canceled') badgeClass = 'status-declined';
               
               return (
                 <div 
@@ -246,11 +251,11 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
           <div className="calendar-header flex-between">
             <h2>📅 היומן האישי שלי - {currentRabbi.name}</h2>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <button className="btn btn-secondary" onClick={handlePrevMonth} style={{ padding: '4px 10px' }}>◀</button>
+              <button type="button" className="btn btn-secondary" onClick={handlePrevMonth} style={{ padding: '4px 10px' }}>◀</button>
               <span style={{ fontWeight: 'bold', minWidth: '100px', textAlign: 'center' }}>
                 {monthNames[month]} {year}
               </span>
-              <button className="btn btn-secondary" onClick={handleNextMonth} style={{ padding: '4px 10px' }}>▶</button>
+              <button type="button" className="btn btn-secondary" onClick={handleNextMonth} style={{ padding: '4px 10px' }}>▶</button>
             </div>
           </div>
 
@@ -345,9 +350,47 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
             </div>
           </div>
 
+          {/* Canceled Events Awaiting Confirmation */}
+          {canceledPendingEvents.length > 0 && (
+            <div className="glass-card" style={{ borderRight: '4px solid var(--danger)', background: 'rgba(239, 68, 68, 0.05)' }}>
+              <h3 style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>⚠️ ביטולי אירועים הממתינים לאישור קבלתך <span style={{ display: 'inline-block', direction: 'ltr' }}>({canceledPendingEvents.length})</span></h3>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                מזכירות הארגון ביטלה את האירועים הבאים. נא אשר את קבלת הודעת הביטול.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                {canceledPendingEvents.map(evt => (
+                  <div 
+                    key={evt.id} 
+                    style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', borderRadius: '8px', cursor: 'pointer' }}
+                    onClick={() => setSelectedEventForView(evt)}
+                  >
+                    <div className="flex-between" style={{ marginBottom: '8px' }}>
+                      <strong style={{ color: '#f87171' }}>{evt.title}</strong>
+                      <span className="status-badge status-declined" style={{ fontSize: '10px' }}>בוטל במזכירות</span>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                      <div>📍 {evt.location}</div>
+                      <div>📅 {evt.date} | {evt.time}</div>
+                    </div>
+                    <button 
+                      className="btn btn-danger" 
+                      style={{ width: '100%', padding: '8px', fontWeight: 'bold' }} 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateEventStatus(evt.id, 'canceled');
+                      }}
+                    >
+                      ✓ אשר קבלת ביטול
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* New Event Invitations */}
           <div className="glass-card">
-            <h3>📥 הזמנות לאירועים חדשים ({pendingEvents.length})</h3>
+            <h3>📥 הזמנות לאירועים חדשים <span style={{ display: 'inline-block', direction: 'ltr' }}>({pendingEvents.length})</span></h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
               {pendingEvents.length === 0 ? (
                 <p className="empty-state" style={{ padding: '10px 0' }}>אין הזמנות חדשות הממתינות לאישורך.</p>
@@ -355,12 +398,22 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
                 pendingEvents.map(evt => (
                   <div 
                     key={evt.id} 
-                    style={{ padding: '12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', borderRadius: '8px', cursor: 'pointer' }}
+                    style={{ 
+                      padding: '12px', 
+                      background: 'rgba(0,0,0,0.2)', 
+                      border: evt.isUpdated ? '1.5px solid var(--warning)' : '1px solid var(--glass-border)', 
+                      borderRadius: '8px', 
+                      cursor: 'pointer' 
+                    }}
                     onClick={() => setSelectedEventForView(evt)}
                   >
                     <div className="flex-between" style={{ marginBottom: '8px' }}>
-                      <strong style={{ color: 'var(--text-primary)' }}>{evt.title}</strong>
-                      <span className="status-badge status-pending" style={{ fontSize: '10px' }}>ממתין לתשובה</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>
+                        {evt.title} {evt.isUpdated && <span style={{ color: 'var(--warning)', fontSize: '12px', marginRight: '6px' }}>⚠️ עודכן</span>}
+                      </strong>
+                      <span className="status-badge status-pending" style={{ fontSize: '10px' }}>
+                        {evt.isUpdated ? 'עודכן ונדרש אישור מחדש' : 'ממתין לתשובה'}
+                      </span>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                       <div>📍 {evt.location}</div>
@@ -382,7 +435,7 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
 
           {/* Pending Reports (Completed events) */}
           <div className="glass-card">
-            <h3>📝 הגשת דוח סיכום אירוע ({completedEvents.length})</h3>
+            <h3>📝 הגשת דוח סיכום אירוע <span style={{ display: 'inline-block', direction: 'ltr' }}>({completedEvents.length})</span></h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
               {completedEvents.length === 0 ? (
                 <p className="empty-state" style={{ padding: '10px 0' }}>אין אירועים שממתינים למילוי דוח.</p>
@@ -416,7 +469,7 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
 
           {/* Upcoming Events */}
           <div className="glass-card">
-            <h3>📅 אירועים מאושרים שלי בקרוב ({upcomingEvents.length})</h3>
+            <h3>📅 אירועים מאושרים שלי בקרוב <span style={{ display: 'inline-block', direction: 'ltr' }}>({upcomingEvents.length})</span></h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
               {upcomingEvents.length === 0 ? (
                 <p className="empty-state" style={{ padding: '10px 0' }}>אין אירועים קרובים מאושרים.</p>

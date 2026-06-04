@@ -3,8 +3,8 @@ import { AppContext } from '../context/AppContext';
 
 export default function Login({ onLoginSuccess }) {
   const { login, loginWithToken, rabbis } = useContext(AppContext);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('office@eventflow.co.il');
+  const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   

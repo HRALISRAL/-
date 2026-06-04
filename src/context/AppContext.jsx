@@ -167,6 +167,45 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const updateEvent = async (eventId, eventData) => {
+    try {
+      const res = await fetch(`${API_URL}/events/${eventId}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(eventData)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await fetchEvents();
+        await fetchNotifications();
+        return { success: true };
+      }
+      return { success: false, error: data.error };
+    } catch (e) {
+      console.error('Error updating event:', e);
+      return { success: false, error: 'שגיאת חיבור לשרת' };
+    }
+  };
+
+  const cancelEvent = async (eventId) => {
+    try {
+      const res = await fetch(`${API_URL}/events/${eventId}/cancel`, {
+        method: 'PUT',
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await fetchEvents();
+        await fetchNotifications();
+        return { success: true };
+      }
+      return { success: false, error: data.error };
+    } catch (e) {
+      console.error('Error canceling event:', e);
+      return { success: false, error: 'שגיאת חיבור לשרת' };
+    }
+  };
+
   const updateEventStatus = async (eventId, status) => {
     try {
       const res = await fetch(`${API_URL}/events/${eventId}/status`, {
@@ -334,6 +373,8 @@ export const AppProvider = ({ children }) => {
       loginWithToken,
       logout,
       addEvent,
+      updateEvent,
+      cancelEvent,
       updateEventStatus,
       submitReport,
       advanceTime,

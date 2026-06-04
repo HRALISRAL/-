@@ -5,6 +5,8 @@ export default function SecretaryDashboard() {
     events,
     rabbis,
     addEvent,
+    updateEvent,
+    cancelEvent,
     simulatedTime,
     addRabbi,
     deleteRabbi,
@@ -33,6 +35,18 @@ export default function SecretaryDashboard() {
   // States for "Create Event" Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedDateStr, setSelectedDateStr] = useState('');
+
+  // States for Edit Event Modal
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedEventForEdit, setSelectedEventForEdit] = useState(null);
+  const [editFormTitle, setEditFormTitle] = useState('');
+  const [editFormDate, setEditFormDate] = useState('');
+  const [editFormTime, setEditFormTime] = useState('');
+  const [editFormRabbiId, setEditFormRabbiId] = useState('');
+  const [editFormLocation, setEditFormLocation] = useState('');
+  const [editFormClientName, setEditFormClientName] = useState('');
+  const [editFormClientPhone, setEditFormClientPhone] = useState('');
+  const [editFormDescription, setEditFormDescription] = useState('');
   
   // Bind local view modal variable to AppContext for view event
   const selectedEventForView = viewModalEvent;
@@ -226,11 +240,11 @@ export default function SecretaryDashboard() {
   const reportedEvents = events.filter(e => e.status === 'reported');
 
   const handlePrevMonth = () => {
-    setCalDate(new Date(year, month - 1, 1));
+    setCalDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   };
 
   const handleNextMonth = () => {
-    setCalDate(new Date(year, month + 1, 1));
+    setCalDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
   const handleDayClick = (dayNum) => {
@@ -294,6 +308,56 @@ export default function SecretaryDashboard() {
     }
   };
 
+  const startEditEvent = (evt) => {
+    setSelectedEventForEdit(evt);
+    setEditFormTitle(evt.title || '');
+    setEditFormDate(evt.date || '');
+    setEditFormTime(evt.time || '');
+    setEditFormRabbiId(evt.rabbiId || '');
+    setEditFormLocation(evt.location || '');
+    setEditFormClientName(evt.clientName || '');
+    setEditFormClientPhone(evt.clientPhone || '');
+    setEditFormDescription(evt.description || '');
+    setIsEditModalOpen(true);
+    setSelectedEventForView(null);
+  };
+
+  const handleEditEventSubmit = async (e) => {
+    e.preventDefault();
+    if (!editFormTitle || !editFormDate || !editFormTime || !editFormLocation || !editFormClientName) {
+      alert('נא למלא את כל שדות החובה.');
+      return;
+    }
+
+    const res = await updateEvent(selectedEventForEdit.id, {
+      title: editFormTitle,
+      date: editFormDate,
+      time: editFormTime,
+      rabbiId: editFormRabbiId,
+      location: editFormLocation,
+      clientName: editFormClientName,
+      clientPhone: editFormClientPhone,
+      description: editFormDescription
+    });
+
+    if (res.success) {
+      setIsEditModalOpen(false);
+      setSelectedEventForEdit(null);
+    } else {
+      alert(res.error || 'שגיאה בעדכון האירוע');
+    }
+  };
+
+  const handleCancelEvent = async (evtId) => {
+    if (!window.confirm('האם אתה בטוח שברצונך לבטל אירוע זה? הודעת ביטול תישלח לרב לאישור קבלתה.')) return;
+    const res = await cancelEvent(evtId);
+    if (res.success) {
+      setSelectedEventForView(null);
+    } else {
+      alert(res.error || 'שגיאה בביטול האירוע');
+    }
+  };
+
   const translateStatus = (status) => {
     switch (status) {
       case 'pending': return 'ממתין לאישור';
@@ -301,6 +365,8 @@ export default function SecretaryDashboard() {
       case 'declined': return 'נדחה';
       case 'completed': return 'הסתיים (ממתין לדוח)';
       case 'reported': return 'דוח מולא';
+      case 'canceled_pending': return 'בוטל (ממתין לאישור הרב)';
+      case 'canceled': return 'בוטל ואושר';
       default: return status;
     }
   };
@@ -392,11 +458,11 @@ export default function SecretaryDashboard() {
           <div className="calendar-header flex-between">
             <h2>📅 לוח שנה כללי - מזכירות</h2>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <button className="btn btn-secondary" onClick={handlePrevMonth} style={{ padding: '6px 12px' }}>◀</button>
+              <button type="button" className="btn btn-secondary" onClick={handlePrevMonth} style={{ padding: '6px 12px' }}>◀</button>
               <span style={{ fontWeight: 'bold', fontSize: '18px', minWidth: '110px', textAlign: 'center' }}>
                 {monthNames[month]} {year}
               </span>
-              <button className="btn btn-secondary" onClick={handleNextMonth} style={{ padding: '6px 12px' }}>▶</button>
+              <button type="button" className="btn btn-secondary" onClick={handleNextMonth} style={{ padding: '6px 12px' }}>▶</button>
             </div>
             <button className="btn btn-accent" onClick={() => openCreateModal()}>
               ➕ שיבוץ אירוע חדש
@@ -516,7 +582,7 @@ export default function SecretaryDashboard() {
 
       {/* Main events table list */}
       <div className="glass-card">
-        <h3>📋 מעקב סטטוס כלל האירועים והרבנים ({events.length})</h3>
+        <h3>📋 מעקב סטטוס כלל האירועים והרבנים <span style={{ display: 'inline-block', direction: 'ltr' }}>({events.length})</span></h3>
         <div style={{ overflowX: 'auto', marginTop: '16px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'right' }}>
             <thead>
@@ -549,9 +615,29 @@ export default function SecretaryDashboard() {
                       </span>
                     </td>
                     <td style={{ padding: '12px 8px' }}>
-                      <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => setSelectedEventForView(evt)}>
-                        צפה בפרטים
-                      </button>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '12px' }} onClick={() => setSelectedEventForView(evt)}>
+                          צפה בפרטים
+                        </button>
+                        {evt.status !== 'canceled' && evt.status !== 'reported' && (
+                          <>
+                            <button 
+                              className="btn btn-secondary" 
+                              style={{ padding: '4px 10px', fontSize: '12px', background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.2)' }} 
+                              onClick={() => startEditEvent(evt)}
+                            >
+                              ✏️ ערוך
+                            </button>
+                            <button 
+                              className="btn btn-danger" 
+                              style={{ padding: '4px 10px', fontSize: '12px' }} 
+                              onClick={() => handleCancelEvent(evt.id)}
+                            >
+                              ✕ בטל
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -565,7 +651,7 @@ export default function SecretaryDashboard() {
       <div className="glass-card">
         <div className="flex-between" style={{ marginBottom: '16px' }}>
           <div>
-            <h3>📊 דוחות סיכום שהוגשו ({reportedEvents.length})</h3>
+            <h3>📊 דוחות סיכום שהוגשו <span style={{ display: 'inline-block', direction: 'ltr' }}>({reportedEvents.length})</span></h3>
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
               צפייה בכל דוחות הסיכום שמולאו על ידי הרבנים עבור אירועים שהושלמו.
             </p>
@@ -754,6 +840,109 @@ export default function SecretaryDashboard() {
         </div>
       )}
 
+      {/* EDIT EVENT MODAL */}
+      {isEditModalOpen && selectedEventForEdit && (
+        <div className="modal-overlay" onClick={() => setIsEditModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="flex-between" style={{ borderBottom: '1px solid var(--glass-border)', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h2>✏️ עריכת פרטי אירוע</h2>
+              <button className="btn btn-secondary btn-icon" onClick={() => setIsEditModalOpen(false)}>✕</button>
+            </div>
+            
+            <form onSubmit={handleEditEventSubmit}>
+              <div className="form-group">
+                <label>כותרת האירוע *</label>
+                <input 
+                  type="text" 
+                  value={editFormTitle} 
+                  onChange={(e) => setEditFormTitle(e.target.value)} 
+                  placeholder="לדוגמא: שיעור תורה וערב הפרשת חלה"
+                  required 
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>תאריך *</label>
+                  <input 
+                    type="date" 
+                    value={editFormDate} 
+                    onChange={(e) => setEditFormDate(e.target.value)} 
+                    required 
+                  />
+                </div>
+                <div className="form-group">
+                  <label>שעת התחלה *</label>
+                  <input 
+                    type="time" 
+                    value={editFormTime} 
+                    onChange={(e) => setEditFormTime(e.target.value)} 
+                    required 
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>הרב המשובץ *</label>
+                <select value={editFormRabbiId} onChange={(e) => setEditFormRabbiId(e.target.value)}>
+                  {rabbis.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>מיקום האירוע *</label>
+                <input 
+                  type="text" 
+                  value={editFormLocation} 
+                  onChange={(e) => setEditFormLocation(e.target.value)} 
+                  placeholder='שם האולם, בית כנסת או מתנ"ס'
+                  required 
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>שם איש קשר (לקוח) *</label>
+                  <input 
+                    type="text" 
+                    value={editFormClientName} 
+                    onChange={(e) => setEditFormClientName(e.target.value)} 
+                    placeholder="שם מלא"
+                    required 
+                  />
+                </div>
+                <div className="form-group">
+                  <label>טלפון לקוח *</label>
+                  <input 
+                    type="tel" 
+                    value={editFormClientPhone} 
+                    onChange={(e) => setEditFormClientPhone(e.target.value)} 
+                    placeholder="מספר טלפון"
+                    required 
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>דגשים מיוחדים</label>
+                <textarea 
+                  value={editFormDescription} 
+                  onChange={(e) => setEditFormDescription(e.target.value)} 
+                  placeholder="דגשים טכניים, בקשות מיוחדות של הלקוח וכדומה..."
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsEditModalOpen(false)}>ביטול</button>
+                <button type="submit" className="btn btn-accent">שמור שינויים ושלח עדכון לרב</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* VIEW EVENT MODAL */}
       {selectedEventForView && (
         <div className="modal-overlay" onClick={() => setSelectedEventForView(null)}>
@@ -781,7 +970,7 @@ export default function SecretaryDashboard() {
               </div>
 
               <div style={{ fontSize: '14px' }}>
-                <strong>לקוח:</strong> {selectedEventForView.clientName} ({selectedEventForView.clientPhone})
+                <strong>לקוח:</strong> {selectedEventForView.clientName} <span style={{ display: 'inline-block', direction: 'ltr' }}>({selectedEventForView.clientPhone})</span>
               </div>
 
               {selectedEventForView.description && (
@@ -859,7 +1048,23 @@ export default function SecretaryDashboard() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+                {selectedEventForView.status !== 'canceled' && selectedEventForView.status !== 'reported' && (
+                  <>
+                    <button 
+                      className="btn btn-accent" 
+                      onClick={() => startEditEvent(selectedEventForView)}
+                    >
+                      ✏️ ערוך אירוע
+                    </button>
+                    <button 
+                      className="btn btn-danger" 
+                      onClick={() => handleCancelEvent(selectedEventForView.id)}
+                    >
+                      ✕ בטל אירוע
+                    </button>
+                  </>
+                )}
                 <button className="btn btn-secondary" onClick={() => setSelectedEventForView(null)}>סגור</button>
               </div>
             </div>

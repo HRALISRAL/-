@@ -150,7 +150,7 @@ function buildEmailTemplate(title, bodyHtml, actionLink = null, actionLabel = nu
   return `
     <div dir="rtl" style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 30px; border-radius: 16px; max-width: 600px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
       <div style="text-align: center; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 20px; margin-bottom: 20px;">
-        <span style="font-size: 28px; font-weight: bold; color: #3b82f6; text-shadow: 0 0 10px rgba(59, 130, 246, 0.3);">✨ EventFlow</span>
+        <span style="font-size: 28px; font-weight: bold; color: #3b82f6; text-shadow: 0 0 10px rgba(59, 130, 246, 0.3);">✨ ניהול ארועים</span>
         <div style="font-size: 12px; color: #64748b; margin-top: 4px;">מערכת ניהול ושיבוץ אירועים</div>
       </div>
       
@@ -167,7 +167,7 @@ function buildEmailTemplate(title, bodyHtml, actionLink = null, actionLabel = nu
       ` : ''}
       
       <div style="text-align: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 15px; font-size: 11px; color: #64748b;">
-        נשלח באופן אוטומטי על ידי מערכת EventFlow. נא לא להשיב למייל זה.
+        נשלח באופן אוטומטי על ידי מערכת ניהול ארועים. נא לא להשיב למייל זה.
       </div>
     </div>
   `;
@@ -555,6 +555,7 @@ app.get('/api/events', authenticateToken, async (req, res) => {
         // Match frontend boolean model
         reminderSent: evt.reminderSent === 1,
         reportPromptSent: evt.reportPromptSent === 1,
+        isUpdated: evt.isUpdated === 1,
         report: report ? {
           ...report,
           connectedToRashbi: report.connectedToRashbi === 1,
@@ -639,12 +640,174 @@ app.post('/api/events', authenticateToken, async (req, res) => {
   }
 });
 
+// Secretary Update event details (Reset status to pending and re-notify Rabbi)
+app.put('/api/events/:id', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'secretary') {
+    return res.status(403).json({ error: 'פעולה זו מורשית למזכירות בלבד' });
+  }
+
+  const { id } = req.params;
+  const { title, date, time, rabbiId, location, clientName, clientPhone, description } = req.body;
+
+  if (!title || !date || !time || !rabbiId || !location || !clientName || !clientPhone) {
+    return res.status(400).json({ error: 'נא להזין את כל שדות החובה' });
+  }
+
+  try {
+    const db = await getDbConnection();
+    const existing = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+    if (!existing) {
+      await db.close();
+      return res.status(404).json({ error: 'אירוע לא נמצא' });
+    }
+
+    // Update in database and reset status to pending
+    await db.run(`
+      UPDATE events 
+      SET title = ?, date = ?, time = ?, rabbiId = ?, location = ?, clientName = ?, clientPhone = ?, description = ?, status = "pending", reminderSent = 0, reportPromptSent = 0, isUpdated = 1
+      WHERE id = ?
+    `, [title, date, time, rabbiId, location, clientName, clientPhone, description, id]);
+
+    // Send notifications to the assigned Rabbi
+    const rabbi = await db.get('SELECT * FROM rabbis WHERE id = ?', [rabbiId]);
+    if (rabbi) {
+      const msg = `שלום כבוד הרב ${rabbi.name},\nעודכנו פרטי האירוע "${title}" ליום ${date} בשעה ${time}.\nלפרטים ואישור האירוע המעודכן: https://eventflow.co.il/approve/${id}`;
+      await sendWhatsAppMessage(rabbi.phone, rabbi.name, msg, id);
+
+      const emailBody = `שלום כבוד הרב ${rabbi.name},\nעודכנו פרטי האירוע "${title}" ליום ${date} בשעה ${time} ב-${location}.\nאנא כנס לאשר את הפרטים החדשים.`;
+      
+      const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+      const approveLink = `${BASE_URL}/api/events/public/${id}/approve`;
+      const declineLink = `${BASE_URL}/api/events/public/${id}/decline`;
+
+      const htmlContent = buildEmailTemplate(
+        'עודכנו פרטי האירוע שלך - נדרש אישור מחדש',
+        `<p>שלום כבוד הרב <strong>${rabbi.name}</strong>,</p>
+         <p>מזכירות הארגון עדכנה את פרטי האירוע המשויך אליך. נדרש אישורך מחדש לפרטים המעודכנים:</p>
+         <div style="background: rgba(15, 23, 42, 0.05); padding: 15px; border-radius: 4px; border: 1px solid #E2E8F0; margin: 15px 0; color: #1E293B;">
+           <div style="margin-bottom: 8px;"><strong>אירוע:</strong> ${title}</div>
+           <div style="margin-bottom: 8px;"><strong>תאריך מעודכן:</strong> ${date}</div>
+           <div style="margin-bottom: 8px;"><strong>שעה מעודכנת:</strong> ${time}</div>
+           <div style="margin-bottom: 8px;"><strong>מיקום מעודכן:</strong> ${location}</div>
+           ${description ? `<div style="margin-bottom: 8px;"><strong>דגשים:</strong> ${description}</div>` : ''}
+         </div>
+         <p>נא אשר או דחה את השיבוץ המעודכן באמצעות הכפתורים הבאים:</p>`,
+        approveLink,
+        '✓ אשר פרטים מעודכנים',
+        declineLink,
+        '✕ דחה שיבוץ'
+      );
+
+      await sendEmailMessage(rabbi.name, rabbi.email, emailBody, id, htmlContent);
+    }
+
+    await db.close();
+    res.json({ message: 'האירוע עודכן בהצלחה והודעה נשלחה לרב' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'שגיאה בעדכון האירוע' });
+  }
+});
+
+// Secretary Cancel event (Set status to canceled_pending and notify Rabbi)
+app.put('/api/events/:id/cancel', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'secretary') {
+    return res.status(403).json({ error: 'פעולה זו מורשית למזכירות בלבד' });
+  }
+
+  const { id } = req.params;
+
+  try {
+    const db = await getDbConnection();
+    const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+    if (!event) {
+      await db.close();
+      return res.status(404).json({ error: 'אירוע לא נמצא' });
+    }
+
+    // Update status to canceled_pending
+    await db.run('UPDATE events SET status = "canceled_pending" WHERE id = ?', [id]);
+
+    // Send notifications to the assigned Rabbi
+    const rabbi = await db.get('SELECT * FROM rabbis WHERE id = ?', [event.rabbiId]);
+    if (rabbi) {
+      const msg = `שלום כבוד הרב ${rabbi.name},\nהאירוע "${event.title}" שהיה מתוכנן ליום ${event.date} בשעה ${event.time} בוטל על ידי המזכירות.\nאנא כנס לאשר את קבלת הודעת הביטול: https://eventflow.co.il/confirm-cancel/${id}`;
+      await sendWhatsAppMessage(rabbi.phone, rabbi.name, msg, id);
+
+      const emailBody = `שלום כבוד הרב ${rabbi.name},\nהאירוע "${event.title}" שהיה מתוכנן ליום ${event.date} בשעה ${event.time} בוטל על ידי המזכירות.\nאנא אשר את קבלת הודעת הביטול.`;
+      
+      const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+      const confirmCancelLink = `${BASE_URL}/api/events/public/${id}/confirm-cancel`;
+
+      const htmlContent = buildEmailTemplate(
+        'הודעת ביטול אירוע - נדרש אישור קבלה',
+        `<p>שלום כבוד הרב <strong>${rabbi.name}</strong>,</p>
+         <p>מזכירות הארגון מבקשת להודיעך כי האירוע הבא בוטל:</p>
+         <div style="background: rgba(220, 38, 38, 0.05); padding: 15px; border-radius: 4px; border: 1px solid #FCA5A5; margin: 15px 0; color: #991B1B;">
+           <div style="margin-bottom: 8px;"><strong>אירוע:</strong> ${event.title}</div>
+           <div style="margin-bottom: 8px;"><strong>תאריך מתוכנן:</strong> ${event.date}</div>
+           <div style="margin-bottom: 8px;"><strong>שעה מתוכננת:</strong> ${event.time}</div>
+           <div style="margin-bottom: 8px;"><strong>מיקום מתוכנן:</strong> ${event.location}</div>
+         </div>
+         <p>נא אשר את קבלת הודעת הביטול באמצעות הכפתור הבא:</p>`,
+        confirmCancelLink,
+        '✓ אשר קבלת הודעת ביטול'
+      );
+
+      await sendEmailMessage(rabbi.name, rabbi.email, emailBody, id, htmlContent);
+    }
+
+    await db.close();
+    res.json({ message: 'האירוע בוטל בהצלחה והודעת ביטול נשלחה לרב' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'שגיאה בביטול האירוע' });
+  }
+});
+
+// Public direct event cancel confirmation endpoint (without token, for email action buttons)
+app.get('/api/events/public/:id/confirm-cancel', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const db = await getDbConnection();
+    const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+    if (!event) {
+      await db.close();
+      return res.status(404).send(renderResponsePage('שגיאה', 'האירוע לא נמצא במערכת.', false));
+    }
+
+    if (event.status !== 'canceled_pending') {
+      await db.close();
+      return res.send(renderResponsePage('הביטול כבר אושר', `האירוע נמצא כעת בסטטוס: ${translateStatusHeb(event.status)}`, true));
+    }
+
+    await db.run('UPDATE events SET status = "canceled" WHERE id = ?', [id]);
+    
+    // Log notification update
+    const rabbi = await db.get('SELECT * FROM rabbis WHERE id = ?', [event.rabbiId]);
+    if (rabbi) {
+      const timestamp = new Date().toISOString();
+      const notifId = 'notif-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+      await db.run(
+        'INSERT INTO notifications (id, timestamp, type, recipientName, recipientContact, message, eventId) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [notifId, timestamp, 'email', 'מזכירות הארגון', process.env.OFFICE_EMAIL || 'office@eventflow.co.il', `אישור ביטול במייל: הרב ${rabbi.name} אישר את קבלת הודעת הביטול של האירוע "${event.title}".`, id]
+      );
+    }
+    
+    await db.close();
+    res.send(renderResponsePage('קבלת הביטול אושרה', `אישרת בהצלחה את קבלת הודעת הביטול עבור האירוע "${event.title}". תודה רבה!`, true));
+  } catch (err) {
+    console.error(err);
+    res.status(500).send(renderResponsePage('שגיאה', 'שגיאת שרת פנימית.', false));
+  }
+});
+
 // Update event status (Approve / Decline)
 app.put('/api/events/:id/status', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  if (status !== 'approved' && status !== 'declined') {
+  if (status !== 'approved' && status !== 'declined' && status !== 'canceled') {
     return res.status(400).json({ error: 'סטטוס שגוי' });
   }
 
@@ -662,13 +825,17 @@ app.put('/api/events/:id/status', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'אין לך הרשאה לערוך אירוע זה' });
     }
 
-    await db.run('UPDATE events SET status = ? WHERE id = ?', [status, id]);
+    await db.run('UPDATE events SET status = ?, isUpdated = 0 WHERE id = ?', [status, id]);
     
     // Notify secretary by email log
     const rabbi = await db.get('SELECT * FROM rabbis WHERE id = ?', [evt.rabbiId]);
     if (rabbi) {
-      const statusText = status === 'approved' ? 'אישר' : 'דחה';
-      const msg = `עדכון למזכירות: כבוד הרב ${rabbi.name} ${statusText} את ההזמנה לאירוע "${evt.title}" (${evt.date}).`;
+      let statusText = '';
+      if (status === 'approved') statusText = 'אישר';
+      else if (status === 'declined') statusText = 'דחה';
+      else if (status === 'canceled') statusText = 'אישר קבלת ביטול';
+      
+      const msg = `עדכון למזכירות: כבוד הרב ${rabbi.name} ${statusText} את האירוע "${evt.title}" (${evt.date}).`;
       await sendEmailMessage('מזכירות הארגון', 'office@eventflow.co.il', msg, id);
     }
 
@@ -961,6 +1128,8 @@ function translateStatusHeb(status) {
     case 'declined': return 'נדחה';
     case 'completed': return 'הסתיים';
     case 'reported': return 'דוח מולא';
+    case 'canceled_pending': return 'בוטל וממתין לאישור הרב';
+    case 'canceled': return 'בוטל ואושר';
     default: return status;
   }
 }
@@ -1017,7 +1186,7 @@ function renderResponsePage(title, message, isSuccess) {
     </head>
     <body>
       <div class="card">
-        <div class="logo">✨ EventFlow</div>
+        <div class="logo">✨ ניהול ארועים</div>
         <h1>${title}</h1>
         <p>${message}</p>
         <div style="font-size: 12px; color: #64748b;">ניתן לסגור את החלונית הזו כעת.</div>
