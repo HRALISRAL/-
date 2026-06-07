@@ -59,7 +59,7 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
   const currentMonthEvents = myEvents.filter(evt => {
     if (!evt.date) return false;
     const [evtYear, evtMonth] = evt.date.split('-').map(Number);
-    return evtMonth === (month + 1) && evtYear === year;
+    return evtMonth === (month + 1) && evtYear === year && evt.status !== 'canceled';
   });
   
   const monthNames = [
@@ -80,7 +80,7 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
 
   const handleDayClick = (dayNum) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-    const dayEvents = myEvents.filter(e => e.date === dateStr); // Filtered by active Rabbi only
+    const dayEvents = myEvents.filter(e => e.date === dateStr && e.status !== 'canceled'); // Filtered by active Rabbi only
     
     setSelectedDayEvents({
       dateStr,
@@ -152,7 +152,7 @@ import { AppContext } from '../context/AppContext';export default function Rabbi
     // Days
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dayEvents = myEvents.filter(e => e.date === dateStr); // Rabbi's personal calendar events only
+      const dayEvents = myEvents.filter(e => e.date === dateStr && e.status !== 'canceled'); // Rabbi's personal calendar events only
       const isToday = dateStr === simulatedDateStr;
       cells.push(
         <div 

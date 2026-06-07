@@ -249,7 +249,7 @@ export default function SecretaryDashboard() {
 
   const handleDayClick = (dayNum) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-    const dayEvents = events.filter(e => e.date === dateStr);
+    const dayEvents = events.filter(e => e.date === dateStr && e.status !== 'canceled');
     
     setSelectedDayEvents({
       dateStr,
@@ -383,7 +383,7 @@ export default function SecretaryDashboard() {
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const dayEvents = events.filter(e => e.date === dateStr);
+      const dayEvents = events.filter(e => e.date === dateStr && e.status !== 'canceled');
       const isToday = dateStr === simulatedDateStr;
       cells.push(
         <div 
