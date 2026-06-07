@@ -273,7 +273,7 @@ export default function SecretaryDashboard() {
     setIsCreateModalOpen(true);
   };
 
-  const handleCreateEventSubmit = (e) => {
+  const handleCreateEventSubmit = async (e) => {
     e.preventDefault();
     if (!formTitle || !selectedDateStr || !formTime || !formLocation || !formClientName) {
       alert('נא למלא את כל שדות החובה.');
@@ -287,7 +287,7 @@ export default function SecretaryDashboard() {
       return;
     }
 
-    addEvent({
+    const res = await addEvent({
       title: formTitle,
       date: selectedDateStr,
       time: formTime,
@@ -298,13 +298,15 @@ export default function SecretaryDashboard() {
       description: formDescription
     });
 
-    setIsCreateModalOpen(false);
-    
-    if (selectedDayEvents && selectedDayEvents.dateStr === selectedDateStr) {
-      const updatedEvents = events.filter(e => e.date === selectedDateStr);
-      setTimeout(() => {
-        handleDayClick(selectedDayEvents.dayNum);
-      }, 50);
+    if (res && res.success) {
+      setIsCreateModalOpen(false);
+      if (selectedDayEvents && selectedDayEvents.dateStr === selectedDateStr) {
+        setTimeout(() => {
+          handleDayClick(selectedDayEvents.dayNum);
+        }, 50);
+      }
+    } else {
+      alert(res?.error || 'שגיאה בשיבוץ האירוע');
     }
   };
 

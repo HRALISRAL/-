@@ -591,6 +591,17 @@ app.post('/api/events', authenticateToken, async (req, res) => {
 
   try {
     const db = await getDbConnection();
+
+    // Check if the rabbi is already booked on this day
+    const existingBooking = await db.get(
+      "SELECT COUNT(*) as count FROM events WHERE rabbiId = ? AND date = ? AND status != 'canceled'",
+      [rabbiId, date]
+    );
+    if (existingBooking && existingBooking.count > 0) {
+      await db.close();
+      return res.status(400).json({ error: 'הרב כבר משובץ לאירוע אחר ביום זה' });
+    }
+
     const eventId = 'evt-' + Date.now();
 
     await db.run(`
@@ -659,6 +670,16 @@ app.put('/api/events/:id', authenticateToken, async (req, res) => {
     if (!existing) {
       await db.close();
       return res.status(404).json({ error: 'אירוע לא נמצא' });
+    }
+
+    // Check if the rabbi is already booked on this day (excluding this event itself)
+    const duplicate = await db.get(
+      "SELECT COUNT(*) as count FROM events WHERE rabbiId = ? AND date = ? AND status != 'canceled' AND id != ?",
+      [rabbiId, date, id]
+    );
+    if (duplicate && duplicate.count > 0) {
+      await db.close();
+      return res.status(400).json({ error: 'הרב כבר משובץ לאירוע אחר ביום זה' });
     }
 
     // Update in database and reset status to pending

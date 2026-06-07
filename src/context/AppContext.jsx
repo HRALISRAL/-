@@ -158,12 +158,16 @@ export const AppProvider = ({ children }) => {
         headers: getHeaders(),
         body: JSON.stringify(eventData)
       });
+      const data = await res.json();
       if (res.ok) {
         await fetchEvents();
         await fetchNotifications();
+        return { success: true };
       }
+      return { success: false, error: data.error };
     } catch (e) {
       console.error('Error adding event:', e);
+      return { success: false, error: 'שגיאת חיבור לשרת' };
     }
   };
 
